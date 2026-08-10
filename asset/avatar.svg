@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <rect x="0" y="0" width="512" height="512" rx="96" fill="#334155"/>
+  <g fill="none" stroke="#FFFFFF" stroke-width="22" stroke-linecap="round" stroke-linejoin="round" transform="translate(256,152) scale(0.42) translate(-256,-256)">
+    <path d="M 180 220 L 220 176 L 396 176 L 356 220 Z"/>
+             <path d="M 180 220 H 356 V 340 H 180 Z"/>
+             <path d="M 356 220 L 396 176 V 296 L 356 340"/>
+  </g>
+  <text x="256" y="336" text-anchor="middle" font-family="Noto Sans" font-weight="bold" font-size="140" letter-spacing="14" fill="#FFFFFF">AME</text>
+  <text x="256" y="436" text-anchor="middle" font-family="Noto Sans" font-weight="bold" font-size="26" letter-spacing="8" fill="#FFFFFF" opacity="0.92">AI SANDBOX</text>
+</svg>
