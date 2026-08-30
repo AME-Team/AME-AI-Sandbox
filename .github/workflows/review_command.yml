@@ -1,10 +1,11 @@
 ---
-# PR コメントで ``/request-review`` (エイリアス ``/review``) を投稿するとレビューを開始する。
-# 明示的なコマンドでのみ動作する。
-# workflow_dispatch はブートストラップ・再実行用途（PR 番号を入力して手動起動）。
-#
-# トリガー: issue_comment (PR 上のコメントで発火)。Issue コメントでは発火しないよう
-# github.event.issue.pull_request != null でフィルタする。
+# AME AI Review System — PR レビュー呼び出しラッパ (配布先用)。
+# `ame-ai-reviewer init` で生成される。v0.2.7 はリリースタグ (例: v1.0.0) に置換される。
+# 更新は `ame-ai-reviewer init --ref <新タグ> --force` の再生成で行う。このとき
+# `uses:@<ref>`・`system_ref`・`.pre-commit-config.yaml` の wheel URL が同一タグに揃う
+# （手動で片方だけ差し替えると pre-commit と CI のバージョンが不一致になる）。
+# 本体は reusable workflow 側を参照する。Issue コメントでは発火しない。
+# secrets 登録のエンジン情報 (Issue #40) も引き継ぐ。
 
 name: AI Code Review (Command)
 
@@ -21,87 +22,57 @@ permissions:
   contents: read
   pull-requests: write
 
+# Issue #68: issue_comment は Issue と PR の両方で発火するが、PR コメント以外は
+# ジョブ if で弾く。残る skipped run を同一 PR/Issue ごとにグループ化して履歴の
+# ノイズを抑える (cancel はレビュー途中のトークン無駄遣いを避けるため行わない)。
+concurrency:
+  group: review-command-${{ github.event.issue.number || inputs.pr_number || github.run_id }}
+  cancel-in-progress: false
 jobs:
-  general-review-command:
-    name: Review on /request-review (ame-ai-reviewer)
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
+  review:
+    # Issue #81: コマンド判定の単一情報源は reusable workflow の is-review-command
+    # パーサー (本文の先頭行を完全一致 or " " 区切りで判定)。ここは軽量な前置フィルタで、
+    # 誤判定はパーサー側で弾く。"/request-review\n<理由>" のような改行区切り本文でも
+    # 発火できるよう /request-review は先頭一致とし、/review は /reviewer 等への
+    # 誤発火を避けるため完全一致 or " " 区切りのみとする。
+    # 注意: GitHub 式言語はダブルクォート不可・"\n" エスケープ不可のため、
+    # 改行区切り対応には startsWith(body, '/request-review') が必要になる。
+    # /request-reviewer 等の誤発火は startsWith でジョブが起動しても、パーサーが
+    # run_review=false を返し実処理 (AI レビュー) は一切実行されない (コストは起動のみ)。
+    # 前置フィルタと reusable workflow のパーサーは意図的に二重実装している。
+    # 片方を変更した場合は必ず他方も同期して更新すること。
     if: >-
       github.event_name == 'workflow_dispatch' || (github.event.issue.pull_request != null &&
        github.event.comment.user.login != 'ame-ai-reviewer[bot]' &&
-       startsWith(github.event.comment.body, '/'))
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: Restore engine credentials
-        run: |
-          mkdir -p ~/.claude ~/.local/share/opencode ~/.gemini/antigravity-cli
-          echo "${{ secrets.CLAUDE_CONFIG_B64 }}" | base64 -d > ~/.claude.json
-          echo "${{ secrets.CLAUDE_CREDENTIALS_B64 }}" | base64 -d > ~/.claude/.credentials.json
-          echo "${{ secrets.OPENCODE_AUTH_B64 }}" | base64 -d > ~/.local/share/opencode/auth.json
-          AGY_TOKEN=~/.gemini/antigravity-cli/antigravity-oauth-token
-          echo "${{ secrets.ANTIGRAVITY_OAUTH_B64 }}" | base64 -d > "$AGY_TOKEN"
-          echo "${{ secrets.GEMINI_OAUTH_B64 }}" | base64 -d > ~/.gemini/oauth_creds.json
-          chmod 600 ~/.claude.json ~/.claude/.credentials.json
-          chmod 600 ~/.local/share/opencode/auth.json "$AGY_TOKEN" ~/.gemini/oauth_creds.json
-      - name: Install claude-code / opencode-ai / antigravity-cli
-        run: |
-          npm install -g @anthropic-ai/claude-code@2.1.214 opencode-ai@1.18.3
-          curl -fsSL https://antigravity.google/cli/install.sh | bash
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - name: Determine target PR and whether to run
-        id: cmd
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          INPUT_PR: ${{ inputs.pr_number }}
-          COMMENT_BODY: ${{ github.event.comment.body }}
-          ISSUE_PR: ${{ github.event.issue.number }}
-        run: |
-          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
-            echo "run_review=true" >> "$GITHUB_OUTPUT"
-            echo "pr_number=${INPUT_PR}" >> "$GITHUB_OUTPUT"
-          else
-            RUN_REVIEW=$(python3 -m ame_ai_review_system.review_config \
-              is-review-command "${COMMENT_BODY}")
-            echo "run_review=${RUN_REVIEW}" >> "$GITHUB_OUTPUT"
-            echo "pr_number=${ISSUE_PR}" >> "$GITHUB_OUTPUT"
-          fi
-      - name: Get GitHub App installation token
-        id: app_token
-        if: steps.cmd.outputs.run_review == 'true'
-        uses: actions/create-github-app-token@v2
-        with:
-          app-id: ${{ secrets.AME_AI_REVIEWER_APP_ID }}
-          private-key: ${{ secrets.AME_AI_REVIEWER_APP_PRIVATE_KEY }}
-          permission-contents: read
-          permission-pull-requests: write
-          permission-issues: write
-      - name: Switch to PR branch
-        if: steps.cmd.outputs.run_review == 'true'
-        env:
-          GITHUB_REPOSITORY: ${{ github.repository }}
-          PR_NUMBER: ${{ steps.cmd.outputs.pr_number }}
-          GITHUB_PAT_TOKEN: ${{ steps.app_token.outputs.token }}
-        run: |
-          python3 -m ame_ai_review_system.main checkout "$PR_NUMBER"
-      - name: Run General Review
-        if: steps.cmd.outputs.run_review == 'true'
-        env:
-          AME_AI_REVIEWER_TOKEN: ${{ steps.app_token.outputs.token }}
-          REVIEWER_NAME: ame-ai-reviewer
-          PR_NUMBER: ${{ steps.cmd.outputs.pr_number }}
-          GITHUB_REPOSITORY: ${{ github.repository }}
-          REVIEW_ENGINE: ${{ vars.REVIEW_ENGINE }}
-          REVIEW_MODEL: ${{ vars.REVIEW_MODEL }}
-          REPLY_MODEL: ${{ vars.REPLY_MODEL }}
-          REVIEW_THINKING: ${{ vars.REVIEW_THINKING }}
-        run: |
-          python3 -m ame_ai_review_system.main review \
-            "$PR_NUMBER" \
-            --prompt-file ame_ai_review_system/review_prompt.txt
+       (startsWith(github.event.comment.body, '/request-review') ||
+        github.event.comment.body == '/review' ||
+        startsWith(github.event.comment.body, '/review ')))
+    uses: AME-Team/AME-AI-Review-System/.github/workflows/review-command.yml@v0.2.7
+    with:
+      # Issue #104: reusable workflow 側が type: string で受け取るため、
+      # 配布先ラッパで fromJSON() による数値化は不要。workflow_dispatch の
+      # inputs.pr_number (文字列) もそのまま渡せ、issue_comment の number も
+      # string 入力へは自動的に文字列化される。
+      pr_number: ${{ inputs.pr_number || github.event.issue.number }}
+      # Issue #71: workflow_dispatch 時は github.event.comment が無く command が空になる。
+      # 空文字は || で /request-review へフォールバックし、手動実行でも判定を通す。
+      command: ${{ github.event.comment.body || '/request-review' }}
+      # エンジン設定は vars (with: inputs) と secrets の二系統で渡すが、優先順位は
+      # reusable workflow (review-command.yml@v0.2.7) 側で定義されている:
+      #   inputs.review_engine || secrets.review-engine || 'opencode' (既定)
+      # すなわち vars が secrets より優先される。vars 未設定時は secrets が有効になる。
+      system_ref: v0.2.7
+      review_engine: ${{ vars.REVIEW_ENGINE || '' }}
+      review_model: ${{ vars.REVIEW_MODEL || '' }}
+      reply_model: ${{ vars.REPLY_MODEL || '' }}
+      review_thinking: ${{ vars.REVIEW_THINKING || '' }}
+    secrets:
+      app-id: ${{ secrets.AME_AI_REVIEWER_APP_ID }}
+      private-key: ${{ secrets.AME_AI_REVIEWER_APP_PRIVATE_KEY }}
+      opencode-auth-b64: ${{ secrets.OPENCODE_AUTH_B64 }}
+      antigravity-oauth-b64: ${{ secrets.ANTIGRAVITY_OAUTH_B64 }}
+      gemini-oauth-b64: ${{ secrets.GEMINI_OAUTH_B64 }}
+      review-engine: ${{ secrets.REVIEW_ENGINE }}
+      review-model: ${{ secrets.REVIEW_MODEL }}
+      reply-model: ${{ secrets.REPLY_MODEL }}
+      review-thinking: ${{ secrets.REVIEW_THINKING }}
