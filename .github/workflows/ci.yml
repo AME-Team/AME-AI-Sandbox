@@ -1,5 +1,5 @@
 ---
-# GitHub Actions CI — pre-commit / pytest / pyright / docker build
+# GitHub Actions CI — pre-commit / docker build
 #
 # PR 作成・更新時と main/dev へのプッシュ時に、ローカルの pre-commit と
 # 同一のフックを実行する。
@@ -13,13 +13,19 @@
 # hadolint / trivy のインストールステップと、main/dev への push
 # 時のみ実行する docker-build ジョブを新規追加している。
 #
+# レビューシステムは方式A (wheel + `ame-ai-reviewer init`) で導入しているため、
+# `ame_ai_review_system/` は vendored していない。pre-commit の AI フックは
+# `language: python` + wheel 参照で各環境が自動導入する。
+#
+# pytest / pyright は本リポジトリから除去済み。`tests/` は vendored レビュー
+# システムのテスト群（`scripts/` も同系）であり、wheel 運用で不要なため
+# パッケージごと削除した。リポジトリには Python ソースが存在しないため、
+# pytest の実行経路は持たない（追加する場合は別途用意すること）。
+#
 # landing-page/ (React + TypeScript + Tailwind, Issue #13) の検証は
 # 独立した npm プロジェクトのビルド + lint (tsc / oxlint) のみを CI で実行する。
 # vitest / stylelint / prettier / sqlfluff は、テスト・カスタム CSS・SQL
 # いずれも対象が存在しないため見送っている（landing-page/package.json 参照）。
-# ローカル pre-commit の Gate 1 (ame_ai_review_system.precommit_review) 側の
-# TS/JS 静的解析 (review_config.get_ts_checks) は未活性のまま
-# (docstring 参照)。ここでの CI ビルド + lint が唯一の安全網になる。
 
 name: CI
 
@@ -268,9 +274,8 @@ jobs:
       #
       # --files を使うとファイルスコープフック (ruff/mypy/hadolint/trivy-config 等の
       # pass_filenames: true なフック) は差分ファイルのみ検証する。一方、
-      # always_run: true (semgrep-custom / pyright) はファイル選択に依存せず常時全量実行、
-      # pass_filenames: false (markdownlint-cli2) はマッチするファイル種別が
-      # 1件でも差分に含まれればフック全体を全量実行する (pre-commit の仕様)。
+      # always_run: true (ai-skip-guard / ai-precommit-review) はファイル選択に依存せず
+      # 常時全量実行される (pre-commit の仕様)。
       # したがって --files への切替でプロジェクト全体のカバレッジは低下しない
       # (詳細は .pre-commit-config.yaml の各フック定義参照)。
       #
@@ -283,28 +288,17 @@ jobs:
       - name: Run pre-commit (all files, push to main/dev)
         if: github.event_name == 'push'
         run: pre-commit run --all-files
-        env:
-          MYPYPATH: ${{ github.workspace }}/ame_ai_review_system:${{ github.workspace }}/scripts
-          PYTHONPATH: ${{ github.workspace }}/ame_ai_review_system:${{ github.workspace }}/scripts
 
       - name: Run pre-commit (changed files, PR diff)
         if: github.event_name == 'pull_request'
         env:
           CHANGED_FILES: ${{ steps.changed_files.outputs.files }}
-          MYPYPATH: ${{ github.workspace }}/ame_ai_review_system:${{ github.workspace }}/scripts
-          PYTHONPATH: ${{ github.workspace }}/ame_ai_review_system:${{ github.workspace }}/scripts
         run: |
           if [ -z "${CHANGED_FILES// /}" ]; then
             echo "No changed files detected against base ref; skipping pre-commit."
             exit 0
           fi
           printf '%s\n' "$CHANGED_FILES" | xargs -r -d '\n' pre-commit run --files
-
-      - name: Run unit tests (pytest)
-        run: pytest --tb=short -q
-
-      - name: Run pyright (type check)
-        run: pyright --warnings
 
   docker-build:
     name: Docker build verification

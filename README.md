@@ -128,8 +128,29 @@ API キーは `.env` に記載すれば、コンテナ起動直後から非対�
 
 ## 開発・レビュー（AME-AI-Review-System）
 
-本リポジトリには二段ゲート方式の AI コードレビュー基盤（`ame_ai_review_system/`）が組み込まれています。
-詳細は [`ame_ai_review_system/README.md`](ame_ai_review_system/README.md) を参照してください。
+二段ゲート方式の AI コードレビュー基盤（[AME-Team/AME-AI-Review-System](https://github.com/AME-Team/AME-AI-Review-System)）を
+**方式A（wheel + `ame-ai-reviewer init`）** で導入しています。
+
+- パッケージは vendored せず、GitHub Release の wheel を参照します（`.pre-commit-config.yaml` の
+  `language: python` フックが pre-commit 環境へ自動導入。供給チェーン対策のため `#sha256=` で内容固定）。
+- プロジェクト設定は `.ame-review/config.json`（Git 追跡対象）に配置されます。
+  - `ai_review_enforce_no_skip`: `true`（既定）で `SKIP=ai-precommit-review` を `ai-skip-guard` フックがブロック
+  - `review_include_package_dir`: `false`（既定）で vendored パッケージをレビュー対象外に
+  - `show_engine_info_gate1` / `show_engine_info_gate2`: エンジン・モデル・思考量バナー表示の ON/OFF
+  - `precommit_engine`: `auto`（既定）で実装ツール（claude/opencode/antigravity）を自動検出
+  - これらは導入済み wheel v0.2.7 が解釈するキー（`review_config` / `skip_guard` / `engine` が参照）。
+- CI は `ame-ai-reviewer init` が生成する薄いラッパ（`.github/workflows/review_command.yml` /
+  `review_reply.yml`）が reusable workflow を呼び出します。
+- **バージョン更新** は `ame-ai-reviewer init --preset python --ref <新タグ> --force` で一括再生成する。
+  これによりタグ参照の**計7箇所**（`review_command.yml` の `uses:@<ref>` / `system_ref`、
+  `review_reply.yml` の `uses:@<ref>` / `system_ref`、`.pre-commit-config.yaml` の wheel URL ×3）が同期される。
+  手動で片方だけ差し替えると pre-commit と CI のバージョンが不一致になるため、
+  再生成を原則とし、手動編集する場合は全7箇所の更新を忘れないこと。
+- ローカルレビュー（Gate 1）と PR レビュー（Gate 2）の運用は、本リポジトリの
+  `.agents/skills/review-round/SKILL.md`（配布先では `.claude/skills/review-round/SKILL.md`）
+  および [セットアップガイド](https://github.com/AME-Team/AME-AI-Review-System/blob/main/ame_ai_review_system/docs/setup.md) を参照してください。
+- レビュアー用 GitHub App の Secrets（`AME_AI_REVIEWER_APP_ID` / `AME_AI_REVIEWER_APP_PRIVATE_KEY`）は
+  リポジトリの Actions secrets に登録済みです。
 
 ## 紹介用ランディングページ（landing-page/）
 

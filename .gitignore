@@ -25,6 +25,10 @@ ENV/
 # --- Node（dev ツールのみ）---
 node_modules/
 
+# --- レビューシステム（方式A: wheel + init）---
+# TS エンジンサイドカーは各環境で init --with-engines により再生成されるため追跡しない。
+.ame-review/engines-ts/
+
 # --- OS / 同期クライアント ---
 Thumbs.db
 ehthumbs.db
