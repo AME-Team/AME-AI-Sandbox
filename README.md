@@ -134,6 +134,11 @@ API キーは `.env` に記載すれば、コンテナ起動直後から非対�
 - パッケージは vendored せず、GitHub Release の wheel を参照します（`.pre-commit-config.yaml` の
   `language: python` フックが pre-commit 環境へ自動導入。供給チェーン対策のため `#sha256=` で内容固定）。
 - プロジェクト設定は `.ame-review/config.json`（Git 追跡対象）に配置されます。
+  - `ai_review_enforce_no_skip`: `true`（既定）で `SKIP=ai-precommit-review` を `ai-skip-guard` フックがブロック
+  - `review_include_package_dir`: `false`（既定）で vendored パッケージをレビュー対象外に
+  - `show_engine_info_gate1` / `show_engine_info_gate2`: エンジン・モデル・思考量バナー表示の ON/OFF
+  - `precommit_engine`: `auto`（既定）で実装ツール（claude/opencode/antigravity）を自動検出
+  - これらは導入済み wheel v0.2.7 が解釈するキー（`review_config` / `skip_guard` / `engine` が参照）。
 - CI は `ame-ai-reviewer init` が生成する薄いラッパ（`.github/workflows/review_command.yml` /
   `review_reply.yml`）が reusable workflow を呼び出します。
 - **バージョン更新** は `ame-ai-reviewer init --preset python --ref <新タグ> --force` で一括再生成する。

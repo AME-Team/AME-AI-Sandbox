@@ -12,6 +12,9 @@ default_stages: [pre-commit, pre-merge-commit]
 fail_fast: true
 
 repos:
+  # Python フック（ruff/mypy/codespell）。本リポジトリは Python ソースを持たないため
+  # 通常は skip になるが、`ame-ai-reviewer init --preset python` の生成物を維持し、
+  # 将来 Python を追加した場合に備えて残している（dead config を意図したものではない）。
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.11.0
     hooks:
