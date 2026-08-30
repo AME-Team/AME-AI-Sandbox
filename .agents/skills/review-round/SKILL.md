@@ -7,8 +7,7 @@ description:
 
 ## 概要
 
-本スキルは、AME-AI-Review-System 由来の Dual-Gate アーキテクチャに基づく指示書です。
-レビューラウンドを AI が自動実行するために使う（本リポジトリ AME-AI-Sandbox に移植・適用）。
+本スキルは、AME-AI-Review-System の Dual-Gate アーキテクチャに基づき、レビューラウンドを AI が自動実行するための指示書です。
 
 ---
 
@@ -19,11 +18,14 @@ description:
 ### フロー
 
 1. **静的解析**（`precommit_require_static_checks` が有効時）
-   - `ruff` / `mypy` / `pyright` / `hadolint` / `trivy config` / `shellcheck` / `semgrep` 等を staged ファイルに対して実行
+   - `.pre-commit-config.yaml` の実フック（ruff / ruff-format / mypy / codespell /
+     shellcheck / hadolint / trivy-config / yamllint / gitleaks / detect-private-key 等）を
+     staged ファイルに対して実行。`ai-precommit-review` は実設定へ委譲するため
+     semgrep 等も設定に含めれば同様に効く
    - エラー検出時 → ブロック（コミット失敗）。コードを修正して再 `git add` する
 2. **AI レビュー**（静的解析パス後）
    - `precommit_review.py` が staged + ブランチ差分をレビュー
-   - PR レビューと同じプロンプト（`ame_ai_review_system/review_prompt.txt`）を使用
+   - PR レビューと同じプロンプトを使用
 3. **コミット可否判定**
    - `CRITICAL` / `HIGH` / `MIDDLE` → ブロック
    - `LOW` / `INFO` のみ → streak カウンタ増加
@@ -50,7 +52,7 @@ PR 上で実行する品質ゲートです。以下のループを未解決ス�
 2. **レビュー依頼** — PR コメントで `/request-review`（エイリアス `/review`）を投稿
    - API: `POST /repos/{owner}/{repo}/issues/{pr}/comments`
    - 本文: `/request-review`
-3. **Circuit Breaker** — 静的解析（ruff/mypy/hadolint/trivy config/semgrep 等）を先行実行
+3. **Circuit Breaker** — 静的解析（ruff/mypy/semgrep）を先行実行
    - エラー 1 件でもあれば AI レビューをスキップ。エラー修正後に再依頼
 4. **AI レビュー実行** → インラインレビューコメントが PR に投稿される
 5. **レビューコメント取得**
@@ -63,7 +65,7 @@ PR 上で実行する品質ゲートです。以下のループを未解決ス�
    - LGTM: `対応確認しました。LGTM ✅ Resolve してください。`
    - 追加指摘 → Step 6 に戻る
 9. **Resolve** — LGTM が届いたスレッドを解決済みに変更
-   - API: GraphQL mutation `resolveReviewConversation(input: {threadId: ID!})`
+   - API: GraphQL mutation `resolveReviewThread(input: {threadId: ID!})`
 10. **未解決スレッドチェック**
     - 残っていれば Step 6 に戻る
     - ゼロなら最終レビューへ
@@ -85,7 +87,7 @@ CRITICAL/HIGH/MIDDLE がなく、LOW のみの指摘が **2 回連続** した�
 ```text
 GitHub API   : https://api.github.com
 GraphQL      : https://api.github.com/graphql
-リポジトリ    : tarminjapan/AME-AI-Sandbox
+リポジトリ    : AME-Team/AME-AI-Sandbox
 
 トークン取得（優先順位）:
   CI (GitHub Actions):
@@ -102,7 +104,7 @@ GraphQL      : https://api.github.com/graphql
 レビュー依頼   : POST /repos/{repo}/issues/{pr}/comments
 コメント取得   : GET  /repos/{repo}/pulls/{pr}/comments
 スレッド返信   : POST /repos/{repo}/pulls/{pr}/comments/{id}/replies
-Resolve       : GraphQL mutation resolveReviewConversation(input: {threadId: ID!})
+Resolve       : GraphQL mutation resolveReviewThread(input: {threadId: ID!})
 ```
 
 > GitHub Actions 上では `GITHUB_REPOSITORY` / `GITHUB_API_URL`
@@ -119,3 +121,11 @@ Resolve       : GraphQL mutation resolveReviewConversation(input: {threadId: ID!
 - **`SKIP=ai-precommit-review` を絶対に使わない。** AI pre-commit review（Gate
   1）は Dual-Gate アーキテクチャの第一関門である。フックが遅い、タイムアウトする等の理由で迂回してはならない。タイムアウトが発生した場合は、`timeout`
   パラメータを増やす等の対応をし、必ず Gate 1 を通過してからコミットする。
+- **`SKIP=ai-precommit-review` は単独指定なら機械的にブロックされる。** `.pre-commit-config.yaml`
+  の `ai-skip-guard` フック（`ame_ai_review_system.skip_guard`）が検知し、コミットをブロックする。
+  ただし `SKIP=ai-skip-guard,ai-precommit-review` のようにガードごとスキップする迂回は、upstream の
+  ネイティブフック（`githooks/` と `core.hooksPath`、Issue #26）が本リポジトリでは未導入のため
+  機械的には防止されない。この迂回は命令規律（本スキルの絶対ルール）のみで封じる。AI Agent は
+  スキップを試みず、必ず Gate 1 の AI レビューを通過してコミットすること。
+- **`git commit --no-verify` も使わない。**
+  これは Git レベルで全フックを無視するため本ガードでも防止できない。この経路は命令規律 (本スキル) のみで封じる。

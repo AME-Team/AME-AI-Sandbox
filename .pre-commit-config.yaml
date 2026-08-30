@@ -1,327 +1,43 @@
-# pre-commit フック定義（AME-AI-Sandbox・超厳格）
-#
-# 方針: 厳格な lint/型検査/フォーマット/セキュリティスキャンを包括適用する。
-#       Python(ruff ALL + preview / mypy strict / pyright) + Shell(shellcheck) +
-#       Dockerfile(hadolint / trivy config・超厳格) + YAML(yamllint strict) +
-#       Markdown(markdownlint / textlint) +
-#       依存ゼロの衛生チェック(scripts/precommit_hygiene.py) + シークレットスキャン(gitleaks) +
-#       プロジェクト固有ロジック検査(semgrep custom rules) +
-#       Conventional Commits(commitlint) + テスト(pytest, pre-push のみ)。
-#       fail-fast: 1フックでも失敗したら後続フックを実行せず即座に終了する。
-#
-# 重要: GitHub からフックを取得しない（`repo: local` + `language: system`）。
-#       オフライン環境等でも確実に動作させるため、フックは「ローカルにグローバル
-#       導入済みのツール」を直接呼ぶ。設定の正本は各設定ファイル。
-#
-# 出自: tarminjapan/AME-AI-Review-System から移植。JS/TS/CSS/SQL 向けフック
-#       (eslint/tsc/stylelint/sqlfluff/vitest/prettier) は本リポジトリに
-#       対象ファイルが存在しないため除外し、代わりに hadolint / trivy config を
-#       Dockerfile 向けに新規追加している。mermaid-check は
-#       precommit_review.py の内部静的チェックから無条件に呼ばれる依存のため維持する。
-#
-# ── 初回セットアップ ──────────────────────────────────────────────────────────
-#   uv venv .venv --python 3.12 && uv pip install -r requirements-dev.txt
-#   npm ci
-#   # shellcheck  : apt install shellcheck
-#   # actionlint  : go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.7
-#   # gitleaks    : apt install gitleaks  または  brew install gitleaks
-#   # hadolint    : https://github.com/hadolint/hadolint/releases からバイナリ配置
-#   # trivy       : https://aquasecurity.github.io/trivy/ の公式手順でインストール
-#   pre-commit install --install-hooks -t pre-commit -t commit-msg -t pre-push -t post-commit
-#
-# ── 全ファイルに手動でかける ────────────────────────────────────────────────
-#   pre-commit run --all-files
-#
-# ── 設定の正本 ──────────────────────────────────────────────────────────────
-#   - Python lint/format : pyproject.toml [tool.ruff]
-#   - Python 型検査       : pyproject.toml [tool.mypy]
-#   - 綴り                : pyproject.toml [tool.codespell]
-#   - Markdown            : .markdownlint-cli2.jsonc
-#   - YAML                : .yamllint.yaml
-#   - Shell               : .shellcheckrc
-#   - Dockerfile          : hadolint既定ルール + trivy config
-#   - コミットメッセージ  : .commitlintrc.json
-#   - EditorConfig        : .editorconfig / .editorconfig-checker.json
-#   - textlint            : .textlintrc
-#   - 改行/衝突/最終改行  : scripts/precommit_hygiene.py
 ---
+# AME AI Review System — pre-commit profile: python
+# Python 静的解析 (ruff/mypy/codespell) + AI レビューフック。
 minimum_pre_commit_version: "4.0.0"
+# Issue #82: ai-review-state-reset (stages: [post-commit]) が standard install で
+# 入るよう post-commit を明示する。既存クローンで pre-commit install 済みの場合は
+#   pre-commit install -t pre-commit -t post-commit
+# を再実行すること。
+default_install_hook_types: [pre-commit, post-commit]
+# ローカル git merge 時にもゲートを掛ける（旧設定からの継続。統合は GitHub PR ベースが主）。
 default_stages: [pre-commit, pre-merge-commit]
-default_install_hook_types: [pre-commit, commit-msg, pre-push, post-commit]
-fail_fast: true # 1フック失敗で後続フックを即停止
-
-# vendored ライブラリ（事前ビルド済み UMD 等）と圧縮成果物はどのフックも触らない。
-exclude: |
-  (?x)^(
-      (^|/)vendor/.*|
-      .*\.min\.(js|css)$|
-      .*\.(zip|wasm|db|sha512)$|
-      node_modules/.*|
-      \.venv/.*|
-      dist/.*|
-      build/.*|
-      \.git/.*|
-      .*\.lock$|
-      package-lock\.json
-  )$
+fail_fast: true
 
 repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.11.0
+    hooks:
+      - id: ruff
+        args: [--fix, --exit-non-zero-on-fix]
+      - id: ruff-format
+
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.13.0
+    hooks:
+      - id: mypy
+        additional_dependencies: []
+
+  - repo: https://github.com/codespell-project/codespell
+    rev: v2.3.0
+    hooks:
+      - id: codespell
+
+  # =========================================================================
+  # AME-AI-Sandbox 固有フック（Dockerfile / entrypoint.sh / compose.yaml 向け）。
+  # init の python プリセットには含まれないため、AI レビューより先に実行する
+  # （Circuit Breaker: 機械的指摘は LLM 呼び出し前に検出する）。
+  # ツールはホスト・CI にグローバル導入済み（shellcheck / hadolint / trivy / yamllint）。
+  # =========================================================================
   - repo: local
     hooks:
-      # =========================================================================
-      # 0) ポリシーガードレール — エラー抑制コメント禁止
-      #    # noqa / # type: ignore / # pylint: disable / // eslint-disable /
-      #    // @ts-ignore 等のエラー抑制コメントを検出して禁止する。
-      # =========================================================================
-      - id: prohibit-suppression-comments
-        name: "policy: prohibit error-suppression comments"
-        entry: python3 scripts/check_suppression_comments.py
-        language: system
-        pass_filenames: true
-        types_or: [python, ts, tsx, javascript, jsx]
-        exclude: |
-          (?x)^(
-              scripts/check_suppression_comments\.py|
-              scripts/precommit_hygiene\.py
-          )$
-
-      # =========================================================================
-      # 1) Python lint（超厳格: select=["ALL"] + preview）。
-      #    --exit-non-zero-on-fix: 自動修正できても「修正が必要だった」事実で失敗させ、
-      #    再 add とレビューを必須にする。
-      # =========================================================================
-      - id: ruff-check
-        name: ruff check (lint, ALL + preview)
-        entry: ruff check --force-exclude --fix --exit-non-zero-on-fix
-        language: system
-        types_or: [python, pyi]
-        require_serial: true
-
-      # 2) Python フォーマッタ。差分があれば書き換えてフック失敗 → 再 add を促す。
-      - id: ruff-format
-        name: ruff format
-        entry: ruff format --force-exclude
-        language: system
-        types_or: [python, pyi]
-        require_serial: true
-
-      # 3) Python 静的型検査（mypy strict + 追加の error code）。
-      - id: mypy
-        name: mypy (strict)
-        entry: mypy --config-file pyproject.toml
-        language: system
-        types_or: [python, pyi]
-        require_serial: true
-
-      # 3b) Semgrep カスタムルール（プロジェクト固有ロジック検査）。
-      #     CLAUDE.md のコーディング規約を機械的に強制する。broad exception
-      #     catch / kill -15 直接呼出 / echo|python3 -c / claude flag leak 等。
-      #     設定は ame_ai_review_system/.semgrep/rules.yml。
-      - id: semgrep-custom
-        name: semgrep (custom rules)
-        entry: semgrep --config ame_ai_review_system/.semgrep/rules.yml --error
-        language: system
-        pass_filenames: false
-        require_serial: true
-        always_run: true
-
-      # 4) 綴りミス検出（コード・コメント・ドキュメント横断）。設定は pyproject.toml。
-      - id: codespell
-        name: codespell (typos)
-        entry: codespell
-        language: system
-        types: [text]
-        require_serial: true
-
-      # 5) Markdown lint。自動修正可能なものは --fix で直す。
-      - id: markdownlint-cli2
-        name: markdownlint-cli2 (Markdown)
-        entry: ./node_modules/.bin/markdownlint-cli2 --fix
-        language: system
-        types: [markdown]
-        pass_filenames: false
-        require_serial: true
-
-      # 5b) Mermaid 記法チェック。マークダウン内の Mermaid コードブロックの構文を
-      #     検証し、括弧などの特殊文字を含む bracket label を検出する。
-      #     precommit_review.py の内部静的チェック（Gate 1）から .md ファイル変更時に
-      #     常時呼び出されるため、単体フックとしても対称的に維持する（Gate 2）。
-      - id: mermaid-check
-        name: "mermaid syntax check"
-        entry: python3 -m ame_ai_review_system.mermaid_check
-        language: system
-        types: [markdown]
-        pass_filenames: true
-        require_serial: true
-
-      # =========================================================================
-      # 6) hadolint — Dockerfile ベストプラクティス（超厳格: info以上を全て失敗扱い）
-      # =========================================================================
-      - id: hadolint
-        name: "hadolint (Dockerfile lint, strict)"
-        entry: hadolint --failure-threshold info
-        language: system
-        files: (^|/)Dockerfile(\..*)?$
-        pass_filenames: true
-
-      # =========================================================================
-      # 6b) trivy config — Dockerfile の設定ミス・シークレット混入検出（超厳格）
-      # =========================================================================
-      - id: trivy-config
-        name: "trivy config (Dockerfile misconfiguration + secret scan, strict)"
-        entry: trivy config --exit-code 1 --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL
-        language: system
-        files: (^|/)Dockerfile(\..*)?$
-        pass_filenames: true
-
-      # 7) YAML lint（yamllint, strict）。設定は .yamllint.yaml。
-      - id: yamllint
-        name: yamllint (strict)
-        entry: yamllint --strict
-        language: system
-        types: [yaml]
-        require_serial: true
-
-      # 8) 依存ゼロの衛生チェック（自作・オフライン）。改行コード方針・マージ衝突
-      #    マーカー・最終改行・巨大ソースを検査する。Python だけで動く。
-      - id: repo-hygiene
-        name: repo hygiene (line-endings / conflicts / final-newline)
-        entry: python3 scripts/precommit_hygiene.py
-        language: system
-        require_serial: true
-
-      # 9) Pylance/pyright 静的型検査（VSCode Pylance と同エンジン）。
-      #    --warnings: warning が 1 件でも出たら exit code 1（エラー扱い）。
-      - id: pyright
-        name: pyright (type check)
-        entry: pyright --warnings
-        language: system
-        types_or: [python, pyi]
-        pass_filenames: false
-        require_serial: true
-        always_run: true
-
-      # =========================================================================
-      # 10) ファイル衛生チェック群（pre-commit-hooks 由来）
-      # =========================================================================
-      - id: trailing-whitespace
-        name: trailing whitespace
-        entry: trailing-whitespace-fixer
-        language: system
-        types: [text]
-        exclude: \.md$
-
-      - id: end-of-file-fixer
-        name: end of file fixer
-        entry: end-of-file-fixer
-        language: system
-        types: [text]
-        exclude: '\.(bat|cmd|ps1)$'
-
-      - id: mixed-line-ending
-        name: mixed line ending
-        entry: mixed-line-ending
-        args: [--fix=lf]
-        language: system
-        types: [text]
-        exclude: '\.(bat|cmd|ps1)$'
-
-      - id: check-yaml
-        name: check yaml
-        entry: check-yaml
-        args: [--unsafe]
-        language: system
-        types: [yaml]
-
-      - id: check-toml
-        name: check toml
-        entry: check-toml
-        language: system
-        types: [toml]
-
-      - id: check-json
-        name: check json
-        entry: check-json
-        language: system
-        types: [json]
-        # tsconfig*.json は TypeScript の JSONC 仕様でコメント/末尾カンマを許容するため対象外。
-        exclude: ^landing-page/tsconfig.*\.json$
-
-      - id: check-merge-conflict
-        name: check merge conflict
-        entry: check-merge-conflict
-        language: system
-        types: [text]
-
-      - id: check-case-conflict
-        name: check case conflict
-        entry: check-case-conflict
-        language: system
-
-      - id: detect-private-key
-        name: detect private key
-        entry: detect-private-key
-        language: system
-        types: [text]
-
-      - id: check-added-large-files
-        name: check added large files
-        entry: check-added-large-files
-        args: [--maxkb=500]
-        language: system
-
-      - id: check-shebang-scripts-are-executable
-        name: check shebang scripts are executable
-        entry: check-shebang-scripts-are-executable
-        language: system
-
-      - id: forbid-new-submodules
-        name: forbid new submodules
-        entry: forbid-new-submodules
-        language: system
-
-      - id: debug-statements
-        name: debug statements
-        entry: debug-statement-hook
-        language: system
-        types: [python]
-
-      - id: check-builtin-literals
-        name: check builtin literals
-        entry: check-builtin-literals
-        language: system
-        types: [python]
-
-      - id: check-docstring-first
-        name: check docstring first
-        entry: check-docstring-first
-        language: system
-        types: [python]
-
-      # =========================================================================
-      # 11) textlint — 日本語散文品質
-      # =========================================================================
-      - id: textlint
-        name: "textlint (Japanese prose)"
-        entry: ./node_modules/.bin/textlint
-        language: system
-        types: [markdown]
-        pass_filenames: true
-        require_serial: true
-
-      # =========================================================================
-      # 12) actionlint — GitHub Actions ワークフロー構文検証
-      # =========================================================================
-      - id: actionlint
-        name: "actionlint (Actions workflow validator)"
-        entry: actionlint
-        language: system
-        files: '^\.github/workflows/.*\.ya?ml$'
-        pass_filenames: true
-
-      # =========================================================================
-      # 13) shellcheck — シェルスクリプト静的解析
-      # =========================================================================
       - id: shellcheck
         name: "shellcheck (shell script linter)"
         entry: shellcheck --external-sources --severity=style --rcfile=.shellcheckrc
@@ -329,66 +45,79 @@ repos:
         types: [shell]
         pass_filenames: true
 
-      # =========================================================================
-      # 14) gitleaks — シークレットスキャン
-      # =========================================================================
+      - id: hadolint
+        name: "hadolint (Dockerfile lint, strict)"
+        entry: hadolint --failure-threshold info
+        language: system
+        files: (^|/)Dockerfile(\..*)?$
+        pass_filenames: true
+
+      - id: trivy-config
+        name: "trivy config (Dockerfile misconfiguration + secret scan, strict)"
+        entry: trivy config --exit-code 1 --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL
+        language: system
+        files: (^|/)Dockerfile(\..*)?$
+        pass_filenames: true
+
+      - id: yamllint
+        name: "yamllint (strict)"
+        entry: yamllint --strict
+        language: system
+        types: [yaml]
+        pass_filenames: true
+
       - id: gitleaks
         name: "gitleaks (secret scanner)"
         entry: gitleaks protect --staged
         language: system
         pass_filenames: false
 
-      # =========================================================================
-      # 15) commitlint — Conventional Commits 強制
-      # =========================================================================
-      - id: commitlint
-        name: "commitlint (Conventional Commits enforcement)"
-        entry: ./node_modules/.bin/commitlint --edit
+      - id: detect-private-key
+        name: "detect private key"
+        entry: detect-private-key
         language: system
-        stages: [commit-msg]
-        always_run: true
+        types: [text]
+        pass_filenames: true
 
-      # =========================================================================
-      # 16) 単体テスト（pytest）— pre-push / merge-commit のみ実行
-      # =========================================================================
-      - id: pytest
-        name: pytest (unit tests)
-        entry: pytest
-        language: system
-        types_or: [python, pyi]
-        pass_filenames: false
-        require_serial: true
-        stages: [pre-push, pre-merge-commit]
-        always_run: true
-
-      # =========================================================================
-      # 17) AI コードレビュー (pre-commit)
-      #     PR レビューと同じプロンプトで staged + ブランチ差分をレビューする。
-      #     指摘 0 件なら PASS。CRITICAL/HIGH/MIDDLE/WARNING/未知severity を含めば FAIL。
-      #     LOW/INFO のみが連続した場合は無限ループ回避で PASS する。
-      #     エンジン失敗時は fail-closed でブロック。config.json の
-      #     `precommit_review_enabled` で ON/OFF 可能（デフォルト ON）。
-      #     注意: SKIP 環境変数でスキップ可能 (pre-commit 標準動作)。
-      #     前段の静的解析 (ruff / mypy / hadolint / trivy 等) が全て pass した場合のみ
-      #     AI レビューを実行する。`precommit_require_static_checks` で ON/OFF 可能
-      #     （デフォルト ON）。
-      # =========================================================================
-      - id: ai-precommit-review
-        name: "AI Code Review (pre-commit)"
-        entry: python3 -m ame_ai_review_system.precommit_review
-        language: system
+  # =========================================================================
+  # AME AI Review System — Gate 1 AI review hooks
+  # pre-commit が `language: python` の venv へ wheel を自動導入するため、
+  # 絶対パスのハードコードは不要 (各環境で解決される)。初回実行時のみ
+  # GitHub Releases の wheel 取得にネットワークが必要 (以降はキャッシュ)。
+  # オフライン/制限環境では `ame-ai-reviewer init --python <path>` を使うと
+  # `language: system` で生成され、事前に導入した Python で実行される。
+  # 供給チェーン対策として wheel は `#sha256=` で内容を固定する (Issue #84)。
+  # 各フックの additional_dependencies は常に同一に保つこと (init 生成時は単一の
+  # 定義から全フックへ一律展開される。手動編集時は 3 フックすべてを揃えること)。
+  # =========================================================================
+  - repo: local
+    hooks:
+      - id: ai-skip-guard
+        name: "AI review skip guard (Issue #26)"
+        entry: python -m ame_ai_review_system.skip_guard
+        language: python
+        additional_dependencies:
+          - ame_ai_review_system @ https://github.com/AME-Team/AME-AI-Review-System/releases/download/v0.2.7/ame_ai_review_system-0.2.7-py3-none-any.whl#sha256=69364c9c5d28c15d0cfb3f9fab7bde607bfbb32dfb8b491069ddb24c1df5b4bc
         pass_filenames: false
         always_run: true
         stages: [pre-commit]
 
-      # =========================================================================
-      # 18) AI レビュー streak リセット (post-commit)
-      #     コミット成功時に LOW/INFO のみ streak カウンタを 0 に戻す。
-      # =========================================================================
+      - id: ai-precommit-review
+        name: "AI Code Review (pre-commit)"
+        entry: python -m ame_ai_review_system.precommit_review
+        language: python
+        additional_dependencies:
+          - ame_ai_review_system @ https://github.com/AME-Team/AME-AI-Review-System/releases/download/v0.2.7/ame_ai_review_system-0.2.7-py3-none-any.whl#sha256=69364c9c5d28c15d0cfb3f9fab7bde607bfbb32dfb8b491069ddb24c1df5b4bc
+        pass_filenames: false
+        always_run: true
+        stages: [pre-commit]
+
       - id: ai-review-state-reset
         name: "AI review state reset (post-commit)"
-        entry: python3 -m ame_ai_review_system.post_commit_reset
-        language: system
+        entry: python -m ame_ai_review_system.post_commit_reset
+        language: python
+        additional_dependencies:
+          - ame_ai_review_system @ https://github.com/AME-Team/AME-AI-Review-System/releases/download/v0.2.7/ame_ai_review_system-0.2.7-py3-none-any.whl#sha256=69364c9c5d28c15d0cfb3f9fab7bde607bfbb32dfb8b491069ddb24c1df5b4bc
         pass_filenames: false
         always_run: true
         stages: [post-commit]

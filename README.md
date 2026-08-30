@@ -128,8 +128,19 @@ API キーは `.env` に記載すれば、コンテナ起動直後から非対�
 
 ## 開発・レビュー（AME-AI-Review-System）
 
-本リポジトリには二段ゲート方式の AI コードレビュー基盤（`ame_ai_review_system/`）が組み込まれています。
-詳細は [`ame_ai_review_system/README.md`](ame_ai_review_system/README.md) を参照してください。
+二段ゲート方式の AI コードレビュー基盤（[AME-Team/AME-AI-Review-System](https://github.com/AME-Team/AME-AI-Review-System)）を
+**方式A（wheel + `ame-ai-reviewer init`）** で導入しています。
+
+- パッケージは vendored せず、GitHub Release の wheel を参照します（`.pre-commit-config.yaml` の
+  `language: python` フックが pre-commit 環境へ自動導入。供給チェーン対策のため `#sha256=` で内容固定）。
+- プロジェクト設定は `.ame-review/config.json`（Git 追跡対象）に配置されます。
+- CI は `ame-ai-reviewer init` が生成する薄いラッパ（`.github/workflows/review_command.yml` /
+  `review_reply.yml`）が reusable workflow を呼び出します。更新は生成時に指定した `--ref`（リリースタグ）の差し替えのみです。
+- ローカルレビュー（Gate 1）と PR レビュー（Gate 2）の運用は、本リポジトリの
+  `.agents/skills/review-round/SKILL.md`（配布先では `.claude/skills/review-round/SKILL.md`）
+  および [セットアップガイド](https://github.com/AME-Team/AME-AI-Review-System/blob/main/ame_ai_review_system/docs/setup.md) を参照してください。
+- レビュアー用 GitHub App の Secrets（`AME_AI_REVIEWER_APP_ID` / `AME_AI_REVIEWER_APP_PRIVATE_KEY`）は
+  リポジトリの Actions secrets に登録済みです。
 
 ## 紹介用ランディングページ（landing-page/）
 
