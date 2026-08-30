@@ -32,8 +32,11 @@ git config --global --add safe.directory '*'
 # GH_TOKEN is only ever kept in the environment: gh's credential helper
 # resolves it dynamically, so it is never written to disk in plaintext.
 if [ -n "${GH_TOKEN}" ] && command -v gh >/dev/null 2>&1; then
-    echo "${GH_TOKEN}" | gh auth login --hostname github.com --with-token
-    gh auth setup-git
+    # GH_TOKEN が設定されていると gh は env のトークンを動的解決するため、auth login での
+    # 保存は不要（このケースでは gh は rc=1 を返し、set -e だとコンテナが落ちる）。
+    # setup-git は credential helper を設定し、トークンを env から動的解決する。
+    # 失敗は握りつぶさず stderr に記録する（診断性の維持）。
+    gh auth setup-git || echo "[entrypoint] warning: gh auth setup-git failed" >&2
 fi
 
 exec "$@"

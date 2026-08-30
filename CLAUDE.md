@@ -26,10 +26,13 @@ feature/* | bug/* | chore/*  ──►  main
 - **SSH鍵はイメージに焼き込まない。** 実行時に `-v ~/.ssh:/etc/ssh-host:ro`
   で bind-mount する。`entrypoint.sh` が書き込み可能な `~/.ssh`
   へコピーする方式に統一する。`Dockerfile` に `COPY` で秘密鍵を追加することは禁止。
-- **GitHubトークンをディスクに平文保存しない。** `GH_TOKEN` 環境変数を
-  `gh auth login --with-token` → `gh auth setup-git` に渡し、`gh`
-  の credential helper が動的に解決する方式を維持する。`~/.git-credentials`
-  への直接書き込みは禁止。
+- **GitHubトークンをディスクに平文保存しない。** `GH_TOKEN` 環境変数のみで認証し、
+  `entrypoint.sh` が `gh auth setup-git` で credential helper を設定して env から
+  動的解決する方式を維持する（`gh auth login --with-token` による hosts.yml への
+  保存は行わない。GH_TOKEN 設定時は gh が rc=1 を返すため login 自体も不要）。
+  `gh auth setup-git` が失敗してもコンテナは起動を継続し、stderr に警告を出力する
+  （認証エラーは git 使用時に顕在化する。サンドボックスとしてグレースフルに劣化させる判断）。
+  `~/.git-credentials` への直接書き込みは禁止。
 - Claude Code / OpenCode / Antigravity CLI いずれかに固有の実装を追加する場合、他の2つのCLIの動作を壊さないこと。
   `entrypoint.sh` は特定CLIの分岐を持たず、各CLIが自身の環境変数を直接読む設計を維持する。
 - **コンテナ内 Web サービスの公開設定はハードコードしない。** `compose.yaml` の `network_mode` /
