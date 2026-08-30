@@ -9,7 +9,9 @@ ignore: |
   .venv/
   dist/
   build/
-  # `ame-ai-reviewer init` の生成物。wheel URL + #sha256= が 100 文字を超えるため対象外。
+  # `ame-ai-reviewer init` の生成物（wheel URL + #sha256= が 100 文字超）。
+  # init --force で再生成すると inline disable コメントが失われるため、
+  # ファイル全体を lint 対象外にする（再生成に対して頑健な方式）。
   .pre-commit-config.yaml
 
 rules:

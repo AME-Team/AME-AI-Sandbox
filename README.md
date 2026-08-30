@@ -135,7 +135,12 @@ API キーは `.env` に記載すれば、コンテナ起動直後から非対�
   `language: python` フックが pre-commit 環境へ自動導入。供給チェーン対策のため `#sha256=` で内容固定）。
 - プロジェクト設定は `.ame-review/config.json`（Git 追跡対象）に配置されます。
 - CI は `ame-ai-reviewer init` が生成する薄いラッパ（`.github/workflows/review_command.yml` /
-  `review_reply.yml`）が reusable workflow を呼び出します。更新は生成時に指定した `--ref`（リリースタグ）の差し替えのみです。
+  `review_reply.yml`）が reusable workflow を呼び出します。
+- **バージョン更新** は `ame-ai-reviewer init --preset python --ref <新タグ> --force` で一括再生成する。
+  これによりタグ参照の**計7箇所**（`review_command.yml` の `uses:@<ref>` / `system_ref`、
+  `review_reply.yml` の `uses:@<ref>` / `system_ref`、`.pre-commit-config.yaml` の wheel URL ×3）が同期される。
+  手動で片方だけ差し替えると pre-commit と CI のバージョンが不一致になるため、
+  再生成を原則とし、手動編集する場合は全7箇所の更新を忘れないこと。
 - ローカルレビュー（Gate 1）と PR レビュー（Gate 2）の運用は、本リポジトリの
   `.agents/skills/review-round/SKILL.md`（配布先では `.claude/skills/review-round/SKILL.md`）
   および [セットアップガイド](https://github.com/AME-Team/AME-AI-Review-System/blob/main/ame_ai_review_system/docs/setup.md) を参照してください。
