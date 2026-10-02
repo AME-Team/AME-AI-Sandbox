@@ -100,7 +100,7 @@ repos:
         entry: python -m ame_ai_review_system.skip_guard
         language: python
         additional_dependencies:
-          - ame_ai_review_system @ https://github.com/AME-Team/AME-AI-Review-System/releases/download/v0.2.7/ame_ai_review_system-0.2.7-py3-none-any.whl#sha256=69364c9c5d28c15d0cfb3f9fab7bde607bfbb32dfb8b491069ddb24c1df5b4bc
+          - ame_ai_review_system @ https://github.com/AME-Team/AME-AI-Review-System/releases/download/v0.2.16/ame_ai_review_system-0.2.16-py3-none-any.whl#sha256=76b05b56d6b10d68601b5e9aa20689079b26bdcc7149ab39ab4b63909c8a2c00
         pass_filenames: false
         always_run: true
         stages: [pre-commit]
@@ -110,7 +110,7 @@ repos:
         entry: python -m ame_ai_review_system.precommit_review
         language: python
         additional_dependencies:
-          - ame_ai_review_system @ https://github.com/AME-Team/AME-AI-Review-System/releases/download/v0.2.7/ame_ai_review_system-0.2.7-py3-none-any.whl#sha256=69364c9c5d28c15d0cfb3f9fab7bde607bfbb32dfb8b491069ddb24c1df5b4bc
+          - ame_ai_review_system @ https://github.com/AME-Team/AME-AI-Review-System/releases/download/v0.2.16/ame_ai_review_system-0.2.16-py3-none-any.whl#sha256=76b05b56d6b10d68601b5e9aa20689079b26bdcc7149ab39ab4b63909c8a2c00
         pass_filenames: false
         always_run: true
         stages: [pre-commit]
@@ -120,7 +120,7 @@ repos:
         entry: python -m ame_ai_review_system.post_commit_reset
         language: python
         additional_dependencies:
-          - ame_ai_review_system @ https://github.com/AME-Team/AME-AI-Review-System/releases/download/v0.2.7/ame_ai_review_system-0.2.7-py3-none-any.whl#sha256=69364c9c5d28c15d0cfb3f9fab7bde607bfbb32dfb8b491069ddb24c1df5b4bc
+          - ame_ai_review_system @ https://github.com/AME-Team/AME-AI-Review-System/releases/download/v0.2.16/ame_ai_review_system-0.2.16-py3-none-any.whl#sha256=76b05b56d6b10d68601b5e9aa20689079b26bdcc7149ab39ab4b63909c8a2c00
         pass_filenames: false
         always_run: true
         stages: [post-commit]

@@ -1,11 +1,9 @@
 ---
 # AME AI Review System — PR レビュー呼び出しラッパ (配布先用)。
-# `ame-ai-reviewer init` で生成される。v0.2.7 はリリースタグ (例: v1.0.0) に置換される。
-# 更新は `ame-ai-reviewer init --ref <新タグ> --force` の再生成で行う。このとき
-# `uses:@<ref>`・`system_ref`・`.pre-commit-config.yaml` の wheel URL が同一タグに揃う
-# （手動で片方だけ差し替えると pre-commit と CI のバージョンが不一致になる）。
-# 本体は reusable workflow 側を参照する。Issue コメントでは発火しない。
-# secrets 登録のエンジン情報 (Issue #40) も引き継ぐ。
+# `ame-ai-reviewer init` が生成する。参照 ref: v0 (現行バージョンの移動メジャータグ)。
+# 移動タグは hub のリリースごとに付け替えられるため、配布先での更新作業は不要である。
+# 特定バージョンへ固定したい場合のみ ref を書き換える。本体は reusable workflow 側を参照する。
+# Issue コメントでは発火しない。secrets 登録のエンジン情報 (Issue #40) も引き継ぐ。
 
 name: AI Code Review (Command)
 
@@ -21,6 +19,8 @@ name: AI Code Review (Command)
 permissions:
   contents: read
   pull-requests: write
+  # Issue #140: reusable 側で GITHUB_TOKEN を使い HEAD SHA の check runs を読むため。
+  checks: read
 
 # Issue #68: issue_comment は Issue と PR の両方で発火するが、PR コメント以外は
 # ジョブ if で弾く。残る skipped run を同一 PR/Issue ごとにグループ化して履歴の
@@ -39,15 +39,13 @@ jobs:
     # 改行区切り対応には startsWith(body, '/request-review') が必要になる。
     # /request-reviewer 等の誤発火は startsWith でジョブが起動しても、パーサーが
     # run_review=false を返し実処理 (AI レビュー) は一切実行されない (コストは起動のみ)。
-    # 前置フィルタと reusable workflow のパーサーは意図的に二重実装している。
-    # 片方を変更した場合は必ず他方も同期して更新すること。
     if: >-
       github.event_name == 'workflow_dispatch' || (github.event.issue.pull_request != null &&
        github.event.comment.user.login != 'ame-ai-reviewer[bot]' &&
        (startsWith(github.event.comment.body, '/request-review') ||
         github.event.comment.body == '/review' ||
         startsWith(github.event.comment.body, '/review ')))
-    uses: AME-Team/AME-AI-Review-System/.github/workflows/review-command.yml@v0.2.7
+    uses: AME-Team/AME-AI-Review-System/.github/workflows/review-command.yml@v0
     with:
       # Issue #104: reusable workflow 側が type: string で受け取るため、
       # 配布先ラッパで fromJSON() による数値化は不要。workflow_dispatch の
@@ -57,11 +55,7 @@ jobs:
       # Issue #71: workflow_dispatch 時は github.event.comment が無く command が空になる。
       # 空文字は || で /request-review へフォールバックし、手動実行でも判定を通す。
       command: ${{ github.event.comment.body || '/request-review' }}
-      # エンジン設定は vars (with: inputs) と secrets の二系統で渡すが、優先順位は
-      # reusable workflow (review-command.yml@v0.2.7) 側で定義されている:
-      #   inputs.review_engine || secrets.review-engine || 'opencode' (既定)
-      # すなわち vars が secrets より優先される。vars 未設定時は secrets が有効になる。
-      system_ref: v0.2.7
+      system_ref: v0
       review_engine: ${{ vars.REVIEW_ENGINE || '' }}
       review_model: ${{ vars.REVIEW_MODEL || '' }}
       reply_model: ${{ vars.REPLY_MODEL || '' }}

@@ -1,12 +1,16 @@
 ---
 # AME AI Review System — インライン返信に対する LGTM/追加指摘判断のラッパ (配布先用)。
-# `ame-ai-reviewer init` で生成される。v0.2.7 はリリースタグ (例: v1.0.0) に置換される。
-# secrets 登録のエンジン情報 (Issue #40) も引き継ぐ。
+# `ame-ai-reviewer init` が生成する。参照 ref: v0 (現行バージョンの移動メジャータグ)。
+# 移動タグは hub のリリースごとに付け替えられるため、配布先での更新作業は不要である。
+# 特定バージョンへ固定したい場合のみ ref を書き換える。secrets 登録のエンジン情報 (Issue
+# #40) も引き継ぐ。
 #
-# bot 自己除外 (`comment_user != 'ame-ai-reviewer[bot]'`) と `/` コマンド除外
-# (`!startsWith(comment_body, '/')`) は、このラッパではなく reusable workflow
-# (AME-Team/AME-AI-Review-System/.github/workflows/review-reply.yml@v0.2.7) 側で
-# `comment_user` / `comment_body` 入力として受けて実施する（返信カスケード防止）。
+# 注意 (Issue #115): 本ワークフローに concurrency を設定しないこと。
+#   pull_request_review_comment イベントは返信ごとに個別の run を生成する。
+#   これを concurrency.group で PR 単位にまとめると、短時間で並列投稿された
+#   後続 run が cancel/skip され、bot の LGTM 応答が一部のスレッドに届かなくなる
+#   (1 返信 = 1 LGTM の契約が崩れる)。reply.py は TRIGGER_COMMENT_ID で対象スレッドを
+#   絞り込み、投稿前に再チェックして並走実行の重複 LGTM を防ぐ設計のため直列化は不要。
 
 name: AI Review Reply
 
@@ -18,27 +22,15 @@ permissions:
   contents: read
   pull-requests: write
 
-# Issue #68: インラインコメントは複数連続で投稿され得るため、同一 PR の reply
-# workflow をグループ化して並列実行・履歴ノイズを抑える（cancel はせず完了させる）。
-concurrency:
-  group: review-reply-${{ github.event.pull_request.number }}
-  cancel-in-progress: false
-
 jobs:
   reply:
-    # 前置フィルタ: reusable workflow 側の自己除外・コマンド除外と二重化する防御。
-    # bot 自身の返信や `/` コマンドによる発火をコストゼロで抑える。
-    # 片方を変更した場合は reusable workflow のフィルタと同期して更新すること。
-    if: >-
-      github.event.comment.user.login != 'ame-ai-reviewer[bot]' &&
-      !startsWith(github.event.comment.body, '/')
-    uses: AME-Team/AME-AI-Review-System/.github/workflows/review-reply.yml@v0.2.7
+    uses: AME-Team/AME-AI-Review-System/.github/workflows/review-reply.yml@v0
     with:
       pr_number: ${{ github.event.pull_request.number }}
       comment_id: ${{ github.event.comment.id }}
       comment_body: ${{ github.event.comment.body }}
       comment_user: ${{ github.event.comment.user.login }}
-      system_ref: v0.2.7
+      system_ref: v0
       review_engine: ${{ vars.REVIEW_ENGINE || '' }}
       review_model: ${{ vars.REVIEW_MODEL || '' }}
       reply_model: ${{ vars.REPLY_MODEL || '' }}

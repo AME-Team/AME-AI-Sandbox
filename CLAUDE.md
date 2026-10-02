@@ -4,8 +4,19 @@
 中核は `Dockerfile` / `entrypoint.sh` の定義です。
 加えて、AI コードレビューシステム（[AME-Team/AME-AI-Review-System](https://github.com/AME-Team/AME-AI-Review-System)）を
 **方式A（wheel + `ame-ai-reviewer init`）** で導入している。パッケージ本体は vendored せず、GitHub Release の wheel を
-`.pre-commit-config.yaml`（`language: python` + `#sha256=` 固定）と CI の reusable workflow（`--ref` 差し替え）で参照する。
+`.pre-commit-config.yaml`（`language: python` + `#sha256=` 固定）で参照する。CI のラッパは hub の
+**移動メジャータグ `v0`** を参照し、リリースごとに自動追随する（配布先での更新作業は不要）。
 プロジェクト設定は `.ame-review/config.json` に置く。
+
+- CI（ラッパの `uses:@<ref>` / `system_ref`）は移動メジャータグ `v0` を参照する。不変性が必要な場合は
+  `ame-ai-reviewer init --ref v0.2.16` のようにリリースタグへ固定する（その場合は手作業の更新が必要）。
+- Gate 1 の wheel は `.pre-commit-config.yaml` の 3 フックに `#sha256=` 付きで固定する（現在 v0.2.16）。
+  追随は `ame-ai-reviewer sync`、差分の確認だけなら `sync --check`（差分あり exit 1 / 判定不能 exit 2）。
+  リリース直後は CI とローカルの版がずれ得るため、追随は `sync` の実行時点で揃う。
+- ラッパの `checks: read` は Gate 2 が PR の check runs を読むための権限（hub の Issue #140）。
+  欠けると外部 CI ゲートが無言で無効化されるため、テンプレートどおりに維持する。
+- `review_reply.yml` に前置 `if` は置かない。bot 自己除外・コマンド除外・`@ame-ai-reviewer` 宛て判定は
+  upstream が `comment_user` / `comment_body` 入力に対して行う（重複させると上流の条件と乖離する）。
 
 ## ブランチ・PR ポリシー
 
@@ -110,7 +121,8 @@ Resolve     : GraphQL mutation resolveReviewThread(input: {threadId: ID!})
 （`inputs.review_engine || secrets.review-engine || 'opencode'`。`vars.REVIEW_ENGINE` 等で上書き可能）。
 ローカル pre-commit レビューは `precommit_engine: auto`（`.ame-review/config.json`）で実装ツールを自動検出する。
 Gate 2（CI）で `claude` エンジンを使う場合は、Claude 認証情報（`CLAUDE_CONFIG_B64` /
-`CLAUDE_CREDENTIALS_B64` 等）を Actions secrets に追加する必要がある（v0.2.7 のラッパ既定は未対応のため、本リポジトリでは `opencode` を既定とする）。
+`CLAUDE_CREDENTIALS_B64` 等）を Actions secrets に追加する必要がある（現行のラッパ既定にも Claude 用の
+secrets は含まれないため、本リポジトリでは `opencode` を既定とする）。
 エンジンはレビュアーとして「元の指摘内容」「開発者の返信」「PR の diff」を照合し、修正が十分かを判断する。
 
 ### 4. PR 作成後の自動レビュー対応フロー
@@ -162,9 +174,9 @@ PR を作成・プッシュしたら、以下のループを完遂すること�
    `<REVIEWER_NAME_UPPER>_APP_PRIVATE_KEY` を登録（例: `SECURITY_REVIEWER_APP_ID` /
    `SECURITY_REVIEWER_APP_PRIVATE_KEY`）
 3. `.github/workflows/review_command.yml` / `review_reply.yml`（reusable workflow のラッパ）の
-   `secrets:` ブロックに新レビュアーの Secrets を追加する。ラッパの `if:` 前置フィルタには
-   `github.event.comment.user.login != '<新レビュアーslug>[bot]'` を追加してカスケードループを防ぐ
-   （upstream 側の reusable workflow のフィルタとも同期する）
+   `secrets:` ブロックに新レビュアーの Secrets を追加する。bot 自己除外とコマンド除外は upstream の
+   reusable workflow が `comment_user` / `comment_body` 入力に対して行うため、**ラッパには前置 `if`
+   を置かない**（新レビュアーの slug を upstream 側の条件へ追加する）
 4. プロンプトは `.ame-review/review_prompt.txt`（全レビュアー共通の既定）を編集する。
    レビュアー固有のプロンプトが必要な場合は `REVIEWER_PROMPT_FILE` を利用する
 
