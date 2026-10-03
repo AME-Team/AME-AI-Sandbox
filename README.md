@@ -138,14 +138,23 @@ API キーは `.env` に記載すれば、コンテナ起動直後から非対�
   - `review_include_package_dir`: `false`（既定）で vendored パッケージをレビュー対象外に
   - `show_engine_info_gate1` / `show_engine_info_gate2`: エンジン・モデル・思考量バナー表示の ON/OFF
   - `precommit_engine`: `auto`（既定）で実装ツール（claude/opencode/antigravity）を自動検出
-  - これらは導入済み wheel v0.2.7 が解釈するキー（`review_config` / `skip_guard` / `engine` が参照）。
+  - これらは導入済み wheel v0.2.16 が解釈するキー（`review_config` / `skip_guard` / `engine` が参照）。
 - CI は `ame-ai-reviewer init` が生成する薄いラッパ（`.github/workflows/review_command.yml` /
   `review_reply.yml`）が reusable workflow を呼び出します。
-- **バージョン更新** は `ame-ai-reviewer init --preset python --ref <新タグ> --force` で一括再生成する。
-  これによりタグ参照の**計7箇所**（`review_command.yml` の `uses:@<ref>` / `system_ref`、
-  `review_reply.yml` の `uses:@<ref>` / `system_ref`、`.pre-commit-config.yaml` の wheel URL ×3）が同期される。
-  手動で片方だけ差し替えると pre-commit と CI のバージョンが不一致になるため、
-  再生成を原則とし、手動編集する場合は全7箇所の更新を忘れないこと。
+- **バージョンの追随**は移動メジャータグ `v0` により自動で行われます。CI 側（ラッパの `uses:@<ref>` /
+  `system_ref`）は `v0` を参照するため、配布先での更新作業は不要です。
+- Gate 1 の wheel は `.pre-commit-config.yaml` の 3 フックに `#sha256=` 付きで固定します（現在 v0.2.16）。
+  追随は `ame-ai-reviewer sync` が行い、URL と `#sha256=` を hub の最新リリースへ書き換えます。
+  差分の確認だけなら `ame-ai-reviewer sync --check`（差分があれば exit 1、判定できなければ exit 2）を使います。
+- リリース直後は「CI（移動タグ）」と「ローカル wheel（固定）」の版がずれ得ます。判断の目安は
+  `sync --check` です。CI 側は常に最新を参照し、ローカルは `sync` を実行した時点で揃います。
+  不変性が必要な場合は `ame-ai-reviewer init --ref v0.2.16` のようにリリースタグへ固定します
+  （その場合は手作業の更新が必要になります）。
+- ラッパの `checks: read` は Gate 2 が PR の check runs を読むための権限です（hub の Issue #140）。
+  欠けると外部 CI ゲートが無言で無効化されるため、テンプレートどおりに維持してください。
+- `review_reply.yml` には前置 `if` フィルタを置きません。bot 自己除外とコマンド除外は upstream の
+  reusable workflow が `comment_user` / `comment_body` 入力に対して実施します（`@ame-ai-reviewer`
+  宛てかどうかの判定も含みます）。重複して持つと上流の条件と乖離します。
 - ローカルレビュー（Gate 1）と PR レビュー（Gate 2）の運用は、本リポジトリの
   `.agents/skills/review-round/SKILL.md`（配布先では `.claude/skills/review-round/SKILL.md`）
   および [セットアップガイド](https://github.com/AME-Team/AME-AI-Review-System/blob/main/ame_ai_review_system/docs/setup.md) を参照してください。
