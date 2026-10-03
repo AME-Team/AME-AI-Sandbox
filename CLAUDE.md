@@ -17,6 +17,7 @@
   欠けると外部 CI ゲートが無言で無効化されるため、テンプレートどおりに維持する。
 - `review_reply.yml` に前置 `if` は置かない。bot 自己除外・コマンド除外・`@ame-ai-reviewer` 宛て判定は
   upstream が `comment_user` / `comment_body` 入力に対して行う（重複させると上流の条件と乖離する）。
+  `review_command.yml` のジョブ `if`（PR 判定と `/request-review` のコマンド判定）は**維持**する。
 
 ## ブランチ・PR ポリシー
 
@@ -174,9 +175,12 @@ PR を作成・プッシュしたら、以下のループを完遂すること�
    `<REVIEWER_NAME_UPPER>_APP_PRIVATE_KEY` を登録（例: `SECURITY_REVIEWER_APP_ID` /
    `SECURITY_REVIEWER_APP_PRIVATE_KEY`）
 3. `.github/workflows/review_command.yml` / `review_reply.yml`（reusable workflow のラッパ）の
-   `secrets:` ブロックに新レビュアーの Secrets を追加する。bot 自己除外とコマンド除外は upstream の
-   reusable workflow が `comment_user` / `comment_body` 入力に対して行うため、**ラッパには前置 `if`
-   を置かない**（新レビュアーの slug を upstream 側の条件へ追加する）
+   `secrets:` ブロックに新レビュアーの Secrets を追加する。bot 自己除外はラッパで扱いが異なる。
+   - `review_command.yml` のジョブ `if`（PR 判定とコマンド判定）は**維持**し、新レビュアーの
+     `github.event.comment.user.login != '<新レビュアーslug>[bot]'` を追加する。
+   - `review_reply.yml` には前置 `if` を**置かない**。bot 自己除外・コマンド除外・`@ame-ai-reviewer`
+     宛て判定は upstream が `comment_user` / `comment_body` 入力に対して行う（新レビュアーの slug は
+     upstream 側の条件へ追加する）。
 4. プロンプトは `.ame-review/review_prompt.txt`（全レビュアー共通の既定）を編集する。
    レビュアー固有のプロンプトが必要な場合は `REVIEWER_PROMPT_FILE` を利用する
 
