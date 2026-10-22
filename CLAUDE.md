@@ -9,8 +9,8 @@
 プロジェクト設定は `.ame-review/config.json` に置く。
 
 - CI（ラッパの `uses:@<ref>` / `system_ref`）は移動メジャータグ `v0` を参照する。不変性が必要な場合は
-  `ame-ai-reviewer init --ref v0.2.16` のようにリリースタグへ固定する（その場合は手作業の更新が必要）。
-- Gate 1 の wheel は `.pre-commit-config.yaml` の 3 フックに `#sha256=` 付きで固定する（現在 v0.2.16）。
+  `ame-ai-reviewer init --ref v0.2.20` のようにリリースタグへ固定する（その場合は手作業の更新が必要）。
+- Gate 1 の wheel は `.pre-commit-config.yaml` の 3 フックに `#sha256=` 付きで固定する（現在 v0.2.20）。
   追随は `ame-ai-reviewer sync`、差分の確認だけなら `sync --check`（差分あり exit 1 / 判定不能 exit 2）。
   リリース直後は CI とローカルの版がずれ得るため、追随は `sync` の実行時点で揃う。
 - ラッパの `checks: read` は Gate 2 が PR の check runs を読むための権限（hub の Issue #140）。

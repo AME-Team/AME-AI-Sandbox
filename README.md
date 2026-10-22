@@ -138,17 +138,17 @@ API キーは `.env` に記載すれば、コンテナ起動直後から非対�
   - `review_include_package_dir`: `false`（既定）で vendored パッケージをレビュー対象外に
   - `show_engine_info_gate1` / `show_engine_info_gate2`: エンジン・モデル・思考量バナー表示の ON/OFF
   - `precommit_engine`: `auto`（既定）で実装ツール（claude/opencode/antigravity）を自動検出
-  - これらは導入済み wheel v0.2.16 が解釈するキー（`review_config` / `skip_guard` / `engine` が参照）。
+  - これらは導入済み wheel v0.2.20 が解釈するキー（`review_config` / `skip_guard` / `engine` が参照）。
 - CI は `ame-ai-reviewer init` が生成する薄いラッパ（`.github/workflows/review_command.yml` /
   `review_reply.yml`）が reusable workflow を呼び出します。
 - **バージョンの追随**は移動メジャータグ `v0` により自動で行われます。CI 側（ラッパの `uses:@<ref>` /
   `system_ref`）は `v0` を参照するため、配布先での更新作業は不要です。
-- Gate 1 の wheel は `.pre-commit-config.yaml` の 3 フックに `#sha256=` 付きで固定します（現在 v0.2.16）。
+- Gate 1 の wheel は `.pre-commit-config.yaml` の 3 フックに `#sha256=` 付きで固定します（現在 v0.2.20）。
   追随は `ame-ai-reviewer sync` が行い、URL と `#sha256=` を hub の最新リリースへ書き換えます。
   差分の確認だけなら `ame-ai-reviewer sync --check`（差分があれば exit 1、判定できなければ exit 2）を使います。
 - リリース直後は「CI（移動タグ）」と「ローカル wheel（固定）」の版がずれ得ます。判断の目安は
   `sync --check` です。CI 側は常に最新を参照し、ローカルは `sync` を実行した時点で揃います。
-  不変性が必要な場合は `ame-ai-reviewer init --ref v0.2.16` のようにリリースタグへ固定します
+  不変性が必要な場合は `ame-ai-reviewer init --ref v0.2.20` のようにリリースタグへ固定します
   （その場合は手作業の更新が必要になります）。
 - ラッパの `checks: read` は Gate 2 が PR の check runs を読むための権限です（hub の Issue #140）。
   欠けると外部 CI ゲートが無言で無効化されるため、テンプレートどおりに維持してください。
